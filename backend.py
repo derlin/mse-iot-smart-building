@@ -5,6 +5,7 @@ import sys
 import time
 import logging
 import configpi
+import json
 
 from louie import dispatcher
 from datetime import datetime
@@ -22,9 +23,6 @@ name = configpi.name
 
 
 
-
-
-
 ###########################################################################################################################
 ###########################################################################################################################
 ##########    Root parent backend class     ###############################################################################
@@ -39,7 +37,7 @@ class Backend():
     ###################  instanciation de l'objet backend ########################################################
 
 
-    ###### options needed for python openzwave library like config files path, logging, 
+    ###### options needed for python openzwave library like config files path, logging,
         device = configpi.interface
         options = ZWaveOption(device, config_path="/home/pi/IoTLab/python-openzwave/openzwave/config", user_path=".", cmd_line="")
         options.set_log_file("OZW.log")
@@ -63,7 +61,7 @@ class Backend():
         self.node_added = False
         self.node_removed = False
         self.timestamps = {}          ### will contain the time of the last values' update for each sensor
-        self.queryStages = {          ### the diffrent stages that a node object gets through before being ready 
+        self.queryStages = {          ### the diffrent stages that a node object gets through before being ready
                 "None"                  :  1, # Query process hasn't started for this node
                 "ProtocolInfo"          :  2, # Retrieve protocol information
                 "Probe"                 :  3, # Ping device to see if alive
@@ -104,7 +102,7 @@ class Backend():
         dispatcher.connect(self._node_removed, ZWaveNetwork.SIGNAL_NODE_REMOVED)
 
 
-        
+
 
     def _network_ready(self, network):
 
@@ -152,7 +150,7 @@ class Backend():
 
         if started:
             print "Already started"
-            return 
+            return
         started = True
         self.network.start()
         print "Z-Wave Network Starting..."
@@ -166,16 +164,16 @@ class Backend():
         print "------------------------------------------------------------"
         print "Nodes in network : %s" % self.network.nodes_count
         print "------------------------------------------------------------"
-            
+
     def stop(self):
 
     # this method stops the software representation
 
         global started
-    started = False
+        started = False
         print "Stopping Z-Wave Network... "
         self.network.stop()
-        
+
     def reset(self):
         if self.network.nodes_count == 1:
             self.network.controller.hard_reset()
@@ -197,50 +195,47 @@ class Backend():
 ############# NETWORK #################################################################################################
 #######################################################################################################################
 
-        
-        
+
     def network_info(self):
 
         #### COMPLETE THIS METHOD ##############
-
-        nodes = []
-
-        for node in self.ordered_nodes_dict():
-            stage = node.getNodeQueryStage()
-            stageNbr = self.queryStages[stage]
-            stagePercent = (stageNbr/18.0) * 100
-
-            obj = {
-                "Is Ready": node.is_ready,
-                "Neighbours": len(node.neighbors()),
-                "Node ID": node.node_id,
-                "Node location": node.location,
-                "Node name": node.name,
-                "Product name": node.product_name,
-                "Query Stage": node.getNodeQueryStage(),
-                "Query Stage (%)": "%d %" % (stagePercent,)
-            }
-
-            nodes.append(obj)
-
         result = {
-            "Network Home ID": ,
-            "Nodes": nodes
+            "home_id": self.network.home_id_str,
+            "nodes": [self._node_as_obj(node) for i, node in self.network.nodes.items()]
         }
 
-        return jsonify(result)
-
+        return json.dumps(result)
 
 
 
 
 #######################################################################################################################
 ############# NODES #################################################################################################
-#######################################################################################################################   
+#######################################################################################################################
+
+    def _node_as_obj(self, node):
+
+        stage = node.getNodeQueryStage
+        stagePercent = -1
+
+        if stage in self.queryStages:
+            stageNbr = self.queryStages[stage]
+            stagePercent = (stageNbr/18.0) * 100
+
+        return {
+            "is_ready": node.isReady,
+            "neighbours": len(node.neighbors),
+            "node_id": node.node_id,
+            "node_location": node.location,
+            "node_name": node.name,
+            "product_name": node.product_name,
+            "query_stage": node.getNodeQueryStage,
+            "query_stage_percent": stagePercent
+        }
 
 
     def ordered_nodes_dict(self):
-    
+
     # returns an ordered list of the network's nodes sorted by node's id
 
         return OrderedDict(sorted(self.network.nodes.items()))
@@ -261,63 +256,63 @@ class Backend():
 
         ctrl.cancel_command()
 
-       return "this method passes the controller to inclusion mode and gets it out of it after 20 seconds "
+        return "this method passes the controller to inclusion mode and gets it out of it after 20 seconds "
 
 
 
     def removeNode(self):
 
         #### COMPLETE THIS METHOD ##############
-    
+
        return "this method passes the controller to exclusion mode and gets it out of it after 20 seconds "
 
 
-   
+
     def get_nodes_list(self):
-
         #### COMPLETE THIS METHOD ##############
-
-       return "this method returns the list of nodes "
-
+        return json.dumps([self._node_as_obj(node) for node in self.network.nodes.values()])
 
 
-    def set_node_location(self, n, value):
-
-    #### COMPLETE THIS METHOD ############## 
-
-        return " this method sets the location of a specific sensor node"
 
 
+    def _set_field(self, n, field, value):
+        if n in self.network.nodes.keys():
+            node = self.network.nodes[n]
+            node.set_field(field, value)
+            return jsonify(node_id = n, value = node.to_dict()[field])
+
+        return jsonify(error = "This node does not exist"), 400
 
     def set_node_name(self, n, value):
+        return self._set_field(n, 'name', value)
 
-        #### COMPLETE THIS METHOD ##############
+    def set_node_location(self, n, value):
+        return self._set_field(n, 'location', value)
 
-        return "this method sets the name of a specific sensor node"
 
 
 
     def get_node_location(self, n):
-
         #### COMPLETE THIS METHOD ##############
-
-        return "this method gets the location of a specific sensor node"
+        if n in self.network.nodes.keys():
+            node = self.network.nodes[n]
+            return jsonify(node_id = node.node_id, location = node.location)
+        return jsonify(error = "node not found"), 404
 
 
 
     def get_node_name(self, n):
-
         #### COMPLETE THIS METHOD ##############
-
-        return "this method gets the name of a specific sensor node"
+        if n in self.network.nodes.keys():
+            node = self.network.nodes[n]
+            return jsonify(id = node.node_id, name = node.name)
+        return jsonify(error = "node not found"), 404
 
 
 
     def get_neighbours_list(self, n):
-
-        #### COMPLETE THIS METHOD ##############
-
-        return "this method gets the list of neighbours of a specific sensor node"
+        result = [self._node_as_obj(self.network.nodes[i]) for i in self.network.nodes[n].neighbors]
+        return json.dumps(result)
 
 
 
@@ -325,7 +320,7 @@ class Backend():
 
         #### COMPLETE THIS METHOD ##############
 
-    return "this method sets a configuration parameter to a given value"
+        return "this method sets a configuration parameter to a given value"
 
 
 
@@ -341,21 +336,20 @@ class Backend():
 
         #### COMPLETE THIS METHOD ##############
 
-    return "this method returns a JSON that gives an overview of the network and it's nodes' configuration parameters (like the ID, Wake-up Interval, Group 1 Reports, Group 1 Interval ...)"
+        return "this method returns a JSON that gives an overview of the network and it's nodes' configuration parameters (like the ID, Wake-up Interval, Group 1 Reports, Group 1 Interval ...)"
 
 
 
 #######################################################################################################################
 ############# Multisensors #################################################################################################
-#######################################################################################################################        
+#######################################################################################################################
 
 class Backend_with_sensors(Backend):
 
     def get_sensors_list(self):
-
         #### COMPLETE THIS METHOD ##############
-
-    return "this method returns the list of sensors"    
+        sensors = [self._node_as_obj(node) for node in self.network.nodes.values() if node.node_id != self.network.controller.node_id]
+        return json.dumps(sensors)
 
 
 
@@ -372,7 +366,7 @@ class Backend_with_sensors(Backend):
                 #        if len(node.location) < 3:
                 #            node.location = configpi.sensors[str(node.node_id)][:4]
                         return jsonify(controller = name, sensor = node.node_id, location = node.location, type = value.label.lower(), updateTime = self.timestamps["timestamp"+str(node.node_id)], value = val)
-        return "Node not ready or wrong sensor node !"                      
+        return jsonify( error = "Node not ready or wrong sensor node !")
 
 
 
@@ -389,31 +383,54 @@ class Backend_with_sensors(Backend):
                  #       if len(node.location) < 3:
                  #           node.location = configpi.sensors[str(node.node_id)][:4]
                         return jsonify(controller = name, sensor = node.node_id, location = node.location, type = value.label.lower(), updateTime = self.timestamps["timestamp"+str(node.node_id)], value = val)
-        return "Node not ready or wrong sensor node !"
+
+        return jsonify(error = "Node not ready or wrong sensor node !")
 
 
+    def _find_sensor_value(self, n, label):
+        if n == self.network.controller.node_id or not n in self.network.nodes.keys():
+            return jsonify(error = "This node does not exist or is not a sensor node"), 400
+
+        node = self.network.nodes[n]
+        if not node.isReady or "timestamp"+str(node.node_id) not in self.timestamps:
+            return jsonify(error = "This node is not ready"), 500
+
+        values = [ v for v in node.get_values(0x31, "User", "All", True, False).values() if v.label == label ]
+
+        if len(values) == 0:
+            return jsonify(error = "This node does not have a " + label + " sensor"), 400
+
+        return values[0], -1
 
     def get_luminance(self, n):
-
-        #### COMPLETE THIS METHOD ##############
         
-        return "this method gets the luminance measure of a specific sensor node"
+        value, status_code = self._find_sensor_value(n, 'Luminance')
+        if status_code > 0:
+            return value, status_code
+
+        node = self.network.nodes[n]
+
+        return jsonify(
+            controller = name,
+            sensor = node.node_id,
+            location = node.location,
+            type = value.label.lower(),
+            updateTime = self.timestamps["timestamp"+str(node.node_id)],
+            value = value.data)
 
 
 
     def get_motion(self, n):
 
         #### COMPLETE THIS METHOD ##############
-        
+
         return "this method this method gets the motion measure of a specific sensor node"
 
 
 
     def get_battery(self, n):
-
         #### COMPLETE THIS METHOD ##############
-        
-        return "this method this method gets the battery measure of a specific sensor node"
+        return "battery"
 
 
 
@@ -448,7 +465,7 @@ class Backend_with_dimmers(Backend):
 
     def __init__(self):
         Backend.__init__(self)
-    
+
 
 
     def get_dimmers(self):
@@ -487,8 +504,5 @@ class Backend_with_dimmers(Backend):
 class Backend_with_dimmers_and_sensors(Backend_with_dimmers, Backend_with_sensors): # Cette classe sera utilise dans "flask-main"
 
     pass
-
-
-
 
 
