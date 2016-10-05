@@ -247,7 +247,7 @@ class Backend():
         #### COMPLETE THIS METHOD ##############
         ctrl = self.network.controller
         if not ctrl.begin_command_add_device():
-            return "could not set the controller in exclusion mode" # TODO: error code
+            return jsonify(error = "could not set the controller in inclusion mode"), 500 
 
         if self.node_added: # TODO: should wait for 20s
             self.node_added = False
@@ -267,29 +267,9 @@ class Backend():
        return "this method passes the controller to exclusion mode and gets it out of it after 20 seconds "
 
 
-
     def get_nodes_list(self):
         #### COMPLETE THIS METHOD ##############
         return json.dumps([self._node_as_obj(node) for node in self.network.nodes.values()])
-
-
-
-
-    def _set_field(self, n, field, value):
-        if n in self.network.nodes.keys():
-            node = self.network.nodes[n]
-            node.set_field(field, value)
-            return jsonify(node_id = n, value = node.to_dict()[field])
-
-        return jsonify(error = "This node does not exist"), 400
-
-    def set_node_name(self, n, value):
-        return self._set_field(n, 'name', value)
-
-    def set_node_location(self, n, value):
-        return self._set_field(n, 'location', value)
-
-
 
 
     def get_node_location(self, n):
@@ -300,13 +280,28 @@ class Backend():
         return jsonify(error = "node not found"), 404
 
 
-
     def get_node_name(self, n):
         #### COMPLETE THIS METHOD ##############
         if n in self.network.nodes.keys():
             node = self.network.nodes[n]
             return jsonify(id = node.node_id, name = node.name)
         return jsonify(error = "node not found"), 404
+
+
+    def set_node_name(self, n, value):
+        return self._set_field(n, 'name', value)
+
+    def set_node_location(self, n, value):
+        return self._set_field(n, 'location', value)
+
+
+    def _set_field(self, n, field, value):
+        if n in self.network.nodes.keys():
+            node = self.network.nodes[n]
+            node.set_field(field, value)
+            return jsonify(node_id = n, value = node.to_dict()[field])
+
+        return jsonify(error = "This node does not exist"), 400
 
 
 
@@ -387,58 +382,69 @@ class Backend_with_sensors(Backend):
         return jsonify(error = "Node not ready or wrong sensor node !")
 
 
-    def _find_sensor_value(self, n, label):
-        if n == self.network.controller.node_id or not n in self.network.nodes.keys():
-            return jsonify(error = "This node does not exist or is not a sensor node"), 400
+    def get_luminance(self, n):
+        return self.get_xx(n, 'Luminance')
+
+
+    def get_motion(self, n):
+        return self.get_xx(n, 'Burglar')
+
+
+    def get_battery(self, n):
+        return self.get_xx(n, 'Battery Level')
+
+
+    def get_all_Measures(self, n):
+        if not n in self.network.nodes.keys():
+            return jsonify(error = "this node does not exist"), 400
 
         node = self.network.nodes[n]
+        values = node.get_values("All", "User", "All", "All", "All").values()
+        all_measures = self._get_values_dict(node).values()
+
+        result = {
+            'controller': name,
+            'measures': all_measures
+        }
+
+        return json.dumps(result)
+
+
+
+    def _get_values_dict(self, node):
+        values = node.get_values("All", "User", "All", "All", "All").values()
+        tuples = [ (v.label.lower(), { 'label': v.label.lower(), 'units': v.units, 'node_id': node.node_id, 'value': v.data })  for v in values ]
+        return dict(tuples)
+
+
+    def get_xx(self, n, label, transform=None):
+        #### COMPLETE THIS METHOD ##############
+        if not n in self.network.nodes.keys():
+            return jsonify(error = "this node does not exist"), 400
+
+        node = self.network.nodes[n]
+
         if not node.isReady or "timestamp"+str(node.node_id) not in self.timestamps:
             return jsonify(error = "This node is not ready"), 500
 
-        values = [ v for v in node.get_values(0x31, "User", "All", True, False).values() if v.label == label ]
+        label = label.lower()
+        values = self._get_values_dict(node)
 
-        if len(values) == 0:
-            return jsonify(error = "This node does not have a " + label + " sensor"), 400
+        if label.lower() not in values:
+            return jsonify(error = "this measure does not exist"), 400
 
-        return values[0], -1
+        value = values[label]
 
-    def get_luminance(self, n):
-        
-        value, status_code = self._find_sensor_value(n, 'Luminance')
-        if status_code > 0:
-            return value, status_code
-
-        node = self.network.nodes[n]
+        if transform:
+            value['value'] = transform(value['value'])
 
         return jsonify(
             controller = name,
             sensor = node.node_id,
             location = node.location,
-            type = value.label.lower(),
+            type = label,
             updateTime = self.timestamps["timestamp"+str(node.node_id)],
-            value = value.data)
-
-
-
-    def get_motion(self, n):
-
-        #### COMPLETE THIS METHOD ##############
-
-        return "this method this method gets the motion measure of a specific sensor node"
-
-
-
-    def get_battery(self, n):
-        #### COMPLETE THIS METHOD ##############
-        return "battery"
-
-
-
-    def get_all_Measures(self, n):
-
-        #### COMPLETE THIS METHOD ##############
-
-        return "this method gets all the measures of a specific sensor node"
+            value = value['value'])
 
 
 
@@ -447,8 +453,6 @@ class Backend_with_sensors(Backend):
         #### COMPLETE THIS METHOD ##############
 
         return "this method configures the nodes whit a specific configuration"
-
-
 
 
 
