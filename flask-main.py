@@ -137,8 +137,8 @@ def network_configureNodes():
             Grp_reports = int(content['Group_Reports'])
             Wakeup_interval = int(content['Wake-up_Interval'])
             return backend.set_basic_nodes_configuration(Grp_interval,Grp_reports,Wakeup_interval)  
-        return 'wrong input'
-    return 'use POST method'
+        return jsonify(error = 'wrong input'), 400
+    return jsonify('use POST method'), 400
     
     
 """
@@ -362,8 +362,8 @@ def set_config_param():
             value = int(content['value'])
             size = int(content['size'])
             return backend.set_node_config_parameter(node, param, value, size)
-        return 'wrong input'
-    return 'use POST method'
+        return jsonify(error = 'wrong input'), 400
+    return jsonify('use POST method'), 400
     
 
 
@@ -451,8 +451,8 @@ def set_node_location():
             node = int(content['node_id'])
             value = content['value']
             return backend.set_node_location(node, value)
-        return 'wrong input'
-    return 'use POST method'
+        return jsonify(error = 'wrong input'), 400
+    return jsonify('use POST method'), 400
     
 
 
@@ -485,8 +485,8 @@ def set_node_name():
             node = int(content['node_id'])
             value = content['value']
             return backend.set_node_name(node, value)
-        return 'wrong input'
-    return 'use POST method'
+        return jsonify(error = 'wrong input'), 400
+    return jsonify('use POST method'), 400
             
 
 
@@ -842,10 +842,9 @@ def set_dimmer_level():
                 value = 99
             elif value < 0:
                 value = 0
-            backend.set_dimmer_level(node,value)
-            return "dimmer %s is set to level %s" % (node,value)
-        return 'wrong input'
-    return 'use POST method'
+            return backend.set_dimmer_level(node,value)
+        return jsonify(error = 'wrong input')
+    return jsonify(error ='use POST method')
     
 
 #################################################################
@@ -863,7 +862,7 @@ if __name__ == '__main__':
         file_handler.setFormatter(Formatter('%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'))
         app.logger.addHandler(file_handler)
 
-        app.run(host='::', debug=False, use_reloader=False)
+        app.run(host='::', debug=False, use_reloader=False, threaded=True)
 
     except KeyboardInterrupt:
         backend.stop()

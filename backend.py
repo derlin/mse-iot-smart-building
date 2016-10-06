@@ -246,25 +246,34 @@ class Backend():
 
         #### COMPLETE THIS METHOD ##############
         ctrl = self.network.controller
-        if not ctrl.begin_command_add_device():
-            return jsonify(error = "could not set the controller in inclusion mode"), 500 
+        timeStop = time.time() + 20
+        self.node_added = False 
 
-        if self.node_added: # TODO: should wait for 20s
-            self.node_added = False
-            ctrl.cancel_command()
-            return "Node added successfully"
+        if not ctrl.add_node(False):
+            return jsonify(error = "could not set the controller in inclusion mode"), 500
 
-        ctrl.cancel_command()
+        while (time.time() < timeStop):
+            if self.node_added: # TODO: should wait for 20s
+                self.node_added = False
+                return jsonify(info = "Node added successfully")
 
-        return "this method passes the controller to inclusion mode and gets it out of it after 20 seconds "
+        return jsonify(info = "Controller in inclusion mode, but no node detected.")
 
 
 
     def removeNode(self):
 
         #### COMPLETE THIS METHOD ##############
-
-       return "this method passes the controller to exclusion mode and gets it out of it after 20 seconds "
+        ctrl = self.network.controller
+        timeStop = time.time() + 20
+        elf.node_removed = False
+        if not ctrl.remove_node(False):
+            return jsonify(error = "could not set the controller in exclusion mode"), 500
+        while (time.time() < timeStop):
+            if self.node_removed:
+                elf.node_removed = False
+                return jsonify(info = "Node removed successfully")
+         return jsonify(info = "Controller in exclusion mode, but no event detected.")
 
 
     def get_nodes_list(self):
@@ -471,28 +480,61 @@ class Backend_with_dimmers(Backend):
         Backend.__init__(self)
 
 
-
     def get_dimmers(self):
 
         #### COMPLETE THIS METHOD ##############
 
-        return "this method returns the list of dimmers"
+        results = []
+        for node in self.network.nodes.values():
+            if node.product_name=='ZE27' :
+                results.append(self._node_as_obj(node))
+
+
+        return json.dumps(results)
 
 
 
     def set_dimmer_level(self, n, level):
+        print("set dimmer level PROUT")
 
         #### COMPLETE THIS METHOD ##############
+        if n in self.network.nodes.keys():
+            node = self.network.nodes[n]
+            vs = [v for v in node.get_values("All","User","All","All").values() if v.label == 'Level']
+            if len(vs) == 0 :
+                return jsonify(error='Level value not found '), 400
+            vs[0].data=level
+            return jsonify(node_id = node.node_id, value = level)
 
-        return "this method sets a dimmer's brightness level of a specific node"
+        return jsonify(error = "Node not found"), 400
+
 
 
 
     def get_dimmer_level(self, n):
 
         #### COMPLETE THIS METHOD ##############
+        if not n in self.network.nodes.keys():
+            return jsonify(error = "this node does not exist"), 400
 
-        return "this method gets a dimmer's brightness level of a specific node"
+        node = self.network.nodes[n]
+
+        if not node.isReady or "timestamp"+str(node.node_id) not in self.timestamps:
+            return jsonify(error = "This node is not ready"), 500
+
+        label = 'level'
+        values = self._get_values_dict(node)
+
+        if label.lower() not in values:
+            return jsonify(error = "this measure does not exist"), 400
+
+        value = values[label]
+
+
+        return jsonify( node_id = node.node_id, value = value['value'])
+
+
+
 
 
 
